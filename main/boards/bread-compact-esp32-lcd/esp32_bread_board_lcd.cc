@@ -6,6 +6,7 @@
 #include "button.h"
 #include "config.h"
 #include "led/single_led.h"
+#include "head_motion.h"
 
 #include <esp_log.h>
 #include <driver/i2c_master.h>
@@ -56,6 +57,21 @@ static const gc9a01_lcd_init_cmd_t gc9107_lcd_init_cmds[] = {
 #endif
  
 #define TAG "ESP32-LCD-MarsbearSupport"
+
+// "LED" que na verdade move a cabeca conforme o estado da conversa
+class HeadMotionLed : public Led {
+public:
+    void OnStateChanged() override {
+        auto state = Application::GetInstance().GetDeviceState();
+        HeadMotion::Mode mode = HeadMotion::kIdle;
+        if (state == kDeviceStateListening) {
+            mode = HeadMotion::kListening;
+        } else if (state == kDeviceStateSpeaking || state == kDeviceStateNotifying) {
+            mode = HeadMotion::kSpeaking;
+        }
+        HeadMotion::Instance().SetMode(mode);
+    }
+};
 
 class CompactWifiBoardLCD : public WifiBoard {
 private:
@@ -170,7 +186,7 @@ public:
         if (DISPLAY_BACKLIGHT_PIN != GPIO_NUM_NC) {
             GetBacklight()->RestoreBrightness();
         }
-        
+        HeadMotion::Instance().Init();
     }
 
     virtual AudioCodec* GetAudioCodec() override {
@@ -186,6 +202,11 @@ public:
 
     virtual Display* GetDisplay() override {
         return display_;
+    }
+
+    virtual Led* GetLed() override {
+        static HeadMotionLed led;
+        return &led;
     }
 
     virtual Backlight* GetBacklight() override {
